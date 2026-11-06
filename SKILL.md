@@ -1,103 +1,128 @@
 ---
 name: luckin-coffee-advisor
-version: 1.0.0
-display_name: 瑞幸咖啡智能选咖助手
-display_name_en: Luckin Coffee Advisor
-description: 瑞幸咖啡全品类饮品查询与智能选咖助手。当用户询问瑞幸咖啡推荐、按热量（大卡/低卡）、咖啡因（高咖啡因/低咖啡因/提神）、品类（拿铁/美式/果茶/轻乳茶等）、原料（生椰/燕麦/牛乳）或健康控糖控脂诉求筛选饮品时调用。实时请求瑞幸官方接口，输出包含高清图片、热量、咖啡因、主要原料与健康饮用建议的结构化卡片。
-description_zh: 瑞幸咖啡全品类饮品查询与智能选咖助手。当用户询问瑞幸咖啡推荐、按热量（大卡/低卡）、咖啡因（高咖啡因/低咖啡因/提神）、品类（拿铁/美式/果茶/轻乳茶等）、原料（生椰/燕麦/牛乳）或健康控糖控脂诉求筛选饮品时调用。实时请求瑞幸官方接口，输出包含高清图片、热量、咖啡因、主要原料与健康饮用建议的结构化卡片。
-description_en: An intelligent beverage recommendation assistant for Luckin Coffee. It dynamically fetches official products, filters by calories, caffeine, categories, ingredients, and dietary preferences, and presents structured cards with images, nutrition facts, and recipes.
+version: 1.1.0
+display_name: 瑞幸咖啡智能选咖与下单助手
+display_name_en: Luckin Coffee Advisor & Order Assistant
+description: 瑞幸咖啡全品类饮品查询、智能选咖、附近门店定位与自提代下单助手。支持按热量、咖啡因、原料和健康偏好筛选咖啡，并可联动瑞幸官方 my-coffee MCP 服务实现附近门店查询、规格自提定制、订单预览与代下单。
+description_zh: 瑞幸咖啡全品类饮品查询、智能选咖、附近门店定位与自提代下单助手。支持按热量、咖啡因、原料和健康偏好筛选咖啡，并可联动瑞幸官方 my-coffee MCP 服务实现附近门店查询、规格自提定制、订单预览与代下单。
+description_en: An intelligent beverage recommendation and ordering assistant for Luckin Coffee. It dynamically fetches official products, filters by nutrition, and integrates with the official my-coffee MCP server for store locator, customized SKU selection, order preview, and in-store pickup ordering.
 agent_created: true
 ---
 
-# 瑞幸咖啡智能选咖助手 (Luckin Coffee Advisor)
+# 瑞幸咖啡智能选咖与代下单助手 (Luckin Coffee Advisor & Order Assistant)
 
 ## 概述
 
-本技能用于为用户精准筛选、推荐瑞幸咖啡官方在售饮品。通过实时请求瑞幸官方开放接口，深度解析饮品的热量（kcal）、咖啡因含量（mg）、蛋白质、主要原料、风味描述及标签，并输出富媒体图文卡片。
+本技能为用户提供从**智能选品**到**门店查询**及**到店自提代下单**的一站式服务：
+1. **智能选品引擎**：实时直连官方接口，深度解析饮品热量（kcal）、咖啡因含量（mg）、主要原料及健康控糖控脂考量；
+2. **MCP 代下单引擎**：联动瑞幸官方提供的 `my-coffee` MCP 服务（端点 `https://gwmcp.lkcoffee.com/order/user/mcp`），提供附近门店检索、商品规格属性定制、订单预览算价、生成支付二维码及取餐码查询全流程。
 
 ---
 
-## 核心工作流程
+## 核心工作流与操作契约
 
 ```
-用户输入筛选需求（如：200大卡左右高咖啡因 / 低卡控脂 / 生椰类 / 提神）
+用户输入需求（如：“帮我查附近的瑞幸并点一杯200大卡左右高咖啡因的咖啡”）
        │
        ▼
-执行内置筛选脚本 `scripts/filter_coffee.py`
+【第 1 步：查店与选店】
+调用 `queryShopList`（传入经纬度或门店地名）
+展示附近门店列表 ──> 等待用户明确指定确认自提门店，锁定 `deptId`
        │
        ▼
-解析官方接口最新 100 条全品类数据（categoryList / productList）
+【第 2 步：智能选品与规格定制】
+结合本地 `filter_coffee.py` 筛选低卡/高咖啡因/原料偏好饮品
+调用 `searchProductForMcp` 搜索对应商品
+调用 `queryProductDetailInfo` 与 `switchProduct`（operation: 3）切换并锁定温度、杯型、糖度
        │
        ▼
-结合用户健康与口味偏好做排序与多维度过滤
+【第 3 步：订单预览与实付核算】
+调用 `previewOrder`，传入 `deptId` 与定制商品项
+系统自动匹配账户可用优惠券与咖啡库券，获取最终实付 `payPrice`
        │
        ▼
-输出结构化图文推荐卡片（图片 + 热量 + 咖啡因 + 原料 + 控糖控脂提示）
+【第 4 步：关键节点二次确认】（强制阻断点，严禁跳步！）
+向用户展示清晰的订单确认面板：
+• 自提门店：[门店名]（[详细地址]）
+• 商品规格：[商品名] [大杯/冰/不另外加糖等] x 数量
+• 金额明细：原价 ¥XX，优惠券减免 ¥XX，实际应付：¥XX
+询问：“确认以此规格为您生成代下单支付二维码吗？”
+       │
+       ▼（用户明确同意）
+【第 5 步：创建订单与支付】
+调用 `createOrder`，原样传递 `previewOrder` 返回的 `couponCodeList`
+向用户输出微信支付二维码图片与支付跳转链接
+       │
+       ▼（用户完成付款）
+【第 6 步：取餐码同步】
+调用 `queryOrderDetailInfo` 查询订单最新状态，返回取餐码（如 A108）与预计完成时间
 ```
 
 ---
 
-## 脚本调用方式
+## 严格业务约束与安全防护守则
 
-技能内置了高效的筛选脚本 `scripts/filter_coffee.py`，支持直接通过 Python 命令行调用：
+1. **外送拦截约束**：
+   - 瑞幸官方 MCP **仅支持到店自取，不支持外送配送**；
+   - 用户提到“送外卖”、“送到家”时，须友好提示：“目前瑞幸官方开放接口仅支持到店自取，请问您同意前往门店自提吗？”
+2. **两阶段防误确认**：
+   - 选店必须经用户确认，不可擅自指定任意远距离门店；
+   - 支付前必须呈现优惠后实付总价与退改规则，获得用户许可后方可触发 `createOrder`；
+3. **MCP 服务依赖与降级**：
+   - 查店与下单功能需要客户端加载了瑞幸官方的 `my-coffee` MCP 服务；
+   - 若当前会话尚未配置 `my-coffee` MCP，引导用户在 `~/.workbuddy/mcp.json` 中配置端点，或前往 [open.lkcoffee.com](https://open.lkcoffee.com/) 获取授权 Token。
 
-```bash
-# 基础示例：筛选 200 大卡左右、高咖啡因的咖啡
-python scripts/filter_coffee.py --cal-target 200 --cal-tol 50 --high-caff --sort cal_closest
+---
 
-# 示例 2：严格低卡 (低于 100 kcal) 且提神 (咖啡因 >= 150mg)
-python scripts/filter_coffee.py --cal-max 100 --caff-min 150 --sort caff_desc
+## 瑞幸官方 `my-coffee` MCP 工具对照表
 
-# 示例 3：果味或果茶关键词筛选
-python scripts/filter_coffee.py --keyword 苹果 --sort cal_asc
+| 工具名称 | 触发时机 | 核心入参 | 关键产出 |
+|---|---|---|---|
+| `queryShopList` | 门店定位与检索 | `longitude`, `latitude`, `deptName` | 附近门店列表、`deptId`、营业状态 |
+| `searchProductForMcp` | 搜索商品基础信息 | `deptId`, `keyword` | 商品基础 SKU 与 ID |
+| `queryProductDetailInfo` | 查看可选温度/杯型/糖度 | `deptId`, `productId` | 可定制属性集合与规格代码 |
+| `switchProduct` | 切换锁定具体饮品属性 | `deptId`, `productId`, `specCodes`, `operation: 3` | 锁定后的最终 SKU ID |
+| `previewOrder` | 下单前试算价格与优惠 | `deptId`, `items` | 原价、优惠减免、实付应付、优惠券列表 |
+| `createOrder` | 正式创建订单 | `deptId`, `items`, `couponCodeList` | 订单号 `orderNo`、支付二维码 `payOrderQrCodeUrl` |
+| `queryOrderDetailInfo` | 查询支付状态与取餐码 | `orderNo` | 订单状态、取餐码 `takeCode`、预计自提时间 |
+| `cancelOrder` | 用户取消未付款订单 | `orderNo` | 取消成功标志 |
 
-# 示例 4：排除乳制品/牛奶（乳糖不耐或控脂）
-python scripts/filter_coffee.py --exclude 乳制品,牛奶,厚奶,黄油 --sort caff_desc
+---
+
+## 客户端 MCP 配置指南 (`~/.workbuddy/mcp.json`)
+
+当用户需要在 WorkBuddy 中启用查店与代下单时，可在 `~/.workbuddy/mcp.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "my-coffee": {
+      "type": "streamablehttp",
+      "url": "https://gwmcp.lkcoffee.com/order/user/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_LUCKIN_MCP_TOKEN>"
+      }
+    }
+  }
+}
 ```
 
-### 常用参数说明
-
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| `--cal-target` | float | 目标热量（如 `200`） |
-| `--cal-tol` | float | 容差范围（默认 `±50 kcal`） |
-| `--cal-min` / `--cal-max` | float | 最低 / 最高热量区间 |
-| `--caff-min` / `--caff-max`| float | 最低 / 最高咖啡因区间（mg） |
-| `--high-caff` | flag | 高咖啡因（`>=130mg`） |
-| `--low-caff` | flag | 低咖啡因（`<=60mg`） |
-| `--category` | str | 品类（`lattes`, `americanos`, `cold-brew-drinks`, `iced-teas`, `light-milk-teas` 等） |
-| `--keyword` | str | 关键词检索（如 `生椰`、`茉莉`、`美式`） |
-| `--fitness` | flag | 仅筛选含 `健身友好` 或 `0脂` 标签的饮品 |
-| `--exclude` | str | 排除特定成分/过敏原（逗号分隔） |
-| `--sort` | str | 排序：`cal_closest`、`caff_desc`、`cal_asc` 等 |
-| `--limit` | int | 最大展示数量（默认 10） |
+*注：登录凭证可从瑞幸 AI 开放平台官网（[open.lkcoffee.com](https://open.lkcoffee.com/)）登录个人瑞幸账户后一键生成获取。*
 
 ---
 
-## 呈现与输出规范
+## 典型场景交互示例
 
-向用户汇报筛选结果时，必须包含以下核心信息维度，并以 Markdown 渲染：
+### 场景一：查询附近门店
+* **用户**：“帮我查一下海西金谷广场附近的瑞幸门店”
+* **AI**：调用 `queryShopList(deptName="海西金谷广场")`，返回匹配的 3-5 家门店，附上地址与距离，并询问用户指定哪一家自提。
 
-1. **商品高清缩略图**：使用 `![]({mainImageUrl})` 语法内嵌渲染；
-2. **营养关键数值**：
-   - **热量**：标称大卡（`xxx kcal`）；
-   - **咖啡因**：标称毫克（`xxx mg`）；
-3. **配方与口感**：
-   - **主要原料**：罗列核心基底（如：冷榨生椰、IIAC金奖浓缩咖啡、鲜萃茉莉花香、新西兰进口黄油等）；
-   - **风味口感**：简短口感风味总结；
-4. **健康与定制建议**（特别针对控糖、控脂人群）：
-   - 标注是否含动物脂肪/饱和脂肪（如黄油、厚乳、奶酪）；
-   - 建议下单时的甜度选项（如「推荐选择不另外加糖」）。
-
----
-
-## 典型场景参考
-
-* **场景 A：200大卡左右的高咖啡因咖啡**
-  * 首推：**小黄油美式**（173 kcal，咖啡因 212 mg，黄油坚果香与高提神）；
-  * 次推：**小黄油拿铁**（250 kcal，咖啡因 171.9 mg）；
-  * 备选：**生椰拿铁**（179 kcal，咖啡因 118.4 mg）；
-* **场景 B：减脂健身 / 极低热量高提神**
-  * 首推：**加浓美式**（14 kcal，咖啡因 198.9 mg，0糖0脂）；
-  * 次推：**标准美式**（11 kcal，咖啡因 164.3 mg，健身首选）；
-  * 果咖：**轻椰茉莉拿铁**（120 kcal，咖啡因 179.1 mg，健身友好）。
+### 场景二：智能选咖 + 一句话自提代下单
+* **用户**：“我在海西金谷广场店，帮我点一杯 200 大卡左右高提神的咖啡”
+* **AI**：
+  1. 调用 `filter_coffee.py` 筛选出最适合的「小黄油美式」（173 kcal，咖啡因 212 mg）；
+  2. 调用 `searchProductForMcp` 匹配小黄油美式并用 `switchProduct` 设置为大杯、冰、不另外加糖；
+  3. 调用 `previewOrder` 得到优惠计算：原价 ¥21.00，匹配 5 元优惠券，实付 ¥16.00；
+  4. 向用户输出确认卡片：“海西金谷广场店，小黄油美式（大杯/冰/不另外加糖），原价 ¥21，优惠后实付 ¥16，是否确认下单？”；
+  5. 用户回复“确认”后，调用 `createOrder` 展示微信支付二维码；
+  6. 用户扫码付款后，调用 `queryOrderDetailInfo` 告知：“支付成功！您的取餐码为 A102，预计 5 分钟后可取。”
